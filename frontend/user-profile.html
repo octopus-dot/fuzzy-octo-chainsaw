@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>用户主页 - 社交运营系统</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="navbar" id="navbar"></div>
+<div class="container">
+  <a href="javascript:history.back()" style="font-size:14px;">← 返回</a>
+  <div id="profile-content" style="margin-top:12px;"></div>
+</div>
+<script src="js/api.js"></script>
+<script src="js/utils.js"></script>
+<script>
+const profileUserId = new URLSearchParams(window.location.search).get('id');
+const currentUser = Utils.getUser();
+let relationStatus = 'none';
+
+document.addEventListener('DOMContentLoaded', async () => {
+  Utils.renderNavbar('navbar');
+  if (!profileUserId) { document.getElementById('profile-content').innerHTML = '<div class="empty"><p>用户不存在</p></div>'; return; }
+  await loadProfile();
+  if (currentUser && currentUser.id != profileUserId) await loadRelation();
+});
+
+async function loadProfile() {
+  try {
+    const res = await api.get(`/profile/${profileUserId}`);
+    const u = res.data;
+    const el = document.getElementById('profile-content');
+    if (!u || !u.id) { el.innerHTML = '<div class="empty"><p>用户不存在</p></div>'; return; }
+    const isSelf = currentUser && currentUser.id == u.id;
+    el.innerHTML = `
+      <div class="profile-header">
+        <div style="position:relative;">
+          <img src="${u.backgroundUrl || ''}" class="profile-bg"
+               onerror="this.style.display='none'" />
+        </div>
+        <div class="profile-info">
+          <img src="${Utils.avatarUrl(u.avatarUrl)}" class="profile-avatar-lg"
+               onerror="this.src='/default-avatar.png'" />
+          <div class="profile-details">
+            <div class="profile-nickname">${u.nickname || u.username}</div>
+            <div class="profile-bio">${u.bio || '这个人很懒，什么都没写...'}</div>
+          </div>
+          <div class="profile-actions" id="profile-actions"></div>
+        </div>
+      </div>
+      <h3 style="margin-bottom:16px;">📄 ${isSelf ? '我的' : 'TA的'}帖子</h3>
+      <div class="news-grid" id="user-posts"></div>
+      <div id="pagination"></div>
+    `;
+    loadPosts();
+    if (!isSelf) renderActionButtons();
+  } catch {}
+}
+
+async function loadPosts(page = 1) {
+  try {
+    const resp = await api.get(`/user/${profileUserId}/posts?page=${page}&size=10`);
+    const posts = resp.data.records;
+    const total = resp.data.total;
+    const pel = document.getElementById('user-posts');
+    if (posts.length === 0) {
+      pel.innerHTML = '<div class="empty"><p>暂无已发布的帖子</p></div>';
+      return;
+    }
+    pel.innerHTML = posts.map(p => `
+      <div class="card">
+        <div class="card-title"><a href="post-detail.html?id=${p.id}">${p.title}</a></div>
+        <p class="card-excerpt">${Utils.excerpt(p.content)}</p>
+        ${Utils.firstImage(p.imageUrls) ? `<img src="${Utils.firstImage(p.imageUrls)}" class="card-image" style="max-height:200px;" />` : ''}
+        <div class="card-footer">
+          <span>${Utils.timeAgo(p.createTime)}</span>
+          <a href="post-detail.html?id=${p.id}" class="btn btn-sm btn-outline">查看详情</a>
+        </div>
+      </div>
+    `).join('');
+    Utils.renderPagination('pagination', page, Math.ceil(total / 10), loadPosts);
+  } catch {}
+}
+
+async function loadRelation() {
+  try {
+    const res = await api.get(`/friend/status/${profileUserId}`);
+    relationStatus = res.data.status;
+    renderActionButtons();
+  } catch {}
+}
+
+function renderActionButtons() {
+  const el = document.getElementById('profile-actions');
+  if (!currentUser || currentUser.id == profileUserId) return;
+  let html = '';
+  if (relationStatus === 'friend') {
+    html = `<a href="chat.html?id=${profileUserId}" class="btn btn-primary btn-sm">💬 发消息</a>`;
+  } else if (relationStatus === 'request_sent') {
+    html = `<button class="btn btn-sm btn-outline" disabled>已发送好友申请</button>`;
+  } else {
+    html = `<button class="btn btn-primary btn-sm" id="add-friend-btn">➕ 加好友</button>`;
+  }
+  el.innerHTML = html;
+  const addBtn = document.getElementById('add-friend-btn');
+  if (addBtn) {
+    addBtn.onclick = async () => {
+      try {
+        await api.post(`/friend/request/${profileUserId}`);
+        Utils.toast('好友申请已发送', 'success');
+        relationStatus = 'request_sent';
+        renderActionButtons();
+      } catch {}
+    };
+  }
+}
+</script>
+</body>
+</html>

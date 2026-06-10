@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>私信 - 社交运营系统</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="navbar" id="navbar"></div>
+<div class="container" style="padding:72px 8px 20px;">
+  <div class="chat-container" id="chat-app">
+    <div class="chat-sidebar">
+      <div class="chat-sidebar-header">💬 私信</div>
+      <div id="contact-list"></div>
+    </div>
+    <div class="chat-main" id="chat-main">
+      <div class="chat-empty">选择一个好友开始聊天</div>
+    </div>
+  </div>
+</div>
+<script src="js/api.js"></script>
+<script src="js/utils.js"></script>
+<script>
+if(!Utils.isLoggedIn()){window.location.href='/login.html';}
+const currentUser = Utils.getUser();
+let activeChatId = null;
+let pollTimer = null;
+const preselectedId = new URLSearchParams(window.location.search).get('id');
+
+document.addEventListener('DOMContentLoaded',()=>{
+  Utils.renderNavbar('navbar');
+  loadContacts();
+  if(preselectedId) openChat(preselectedId);
+  pollTimer = setInterval(loadContacts, 10000);
+});
+
+async function loadContacts(){
+  try{
+    const res = await api.get('/messages/conversations');
+    const list = res.data;
+    const unreadRes = await api.get('/messages/unread');
+    const total = unreadRes.data.count;
+    const el = document.getElementById('contact-list');
+    if(list.length===0){el.innerHTML='<div style="padding:20px;text-align:center;color:#aaa;font-size:13px;">暂无对话</div>';return;}
+    const seen = new Set();
+    el.innerHTML = list.filter(m=>{
+      const otherId = m.fromUserId==currentUser.id?m.toUserId:m.fromUserId;
+      if(seen.has(otherId)) return false; seen.add(otherId); return true;
+    }).map(m=>{
+      const otherId = m.fromUserId==currentUser.id?m.toUserId:m.fromUserId;
+      const otherName = m.fromUserId==currentUser.id?m.toUserName:m.fromUserName;
+      const otherAvatar = m.fromUserId==currentUser.id?m.toUserAvatar:m.fromUserAvatar;
+      return `<div class="chat-contact${activeChatId==otherId?' active':''}" data-id="${otherId}" data-name="${otherName}">
+        <img src="${Utils.avatarUrl(otherAvatar)}" class="chat-contact-avatar" onerror="this.style.display='none'" />
+        <div style="flex:1;min-width:0;">
+          <div class="chat-contact-name">${otherName}</div>
+          <div class="chat-contact-preview">${m.content}</div>
+        </div>
+        ${!m.isRead&&m.toUserId==currentUser.id?`<span class="chat-contact-badge">新</span>`:''}
+      </div>`;
+    }).join('');
+    el.querySelectorAll('.chat-contact').forEach(c=>c.onclick=()=>openChat(c.dataset.id,c.dataset.name));
+    // Update unread badge on nav
+    updateUnreadBadge(total);
+  }catch{}
+}
+
+function updateUnreadBadge(total){
+  let badge = document.getElementById('unread-badge');
+  if(total>0){
+    if(!badge){
+      badge = document.createElement('span'); badge.id='unread-badge'; badge.className='unread-badge';
+      badge.textContent = total;
+      const navRight = document.querySelector('.nav-right');
+      if(navRight) navRight.appendChild(badge);
+    } else badge.textContent = total;
+  } else if(badge) badge.remove();
+}
+
+async function openChat(otherId, otherName){
+  activeChatId = otherId;
+  const main = document.getElementById('chat-main');
+  main.innerHTML = `
+    <div class="chat-header">${otherName||'聊天'}</div>
+    <div class="chat-messages" id="chat-msgs"></div>
+    <div class="chat-input-area">
+      <input type="text" class="form-input" id="msg-input" placeholder="输入消息..." maxlength="500" />
+      <button class="btn btn-primary btn-sm" id="send-btn">发送</button>
+    </div>
+  `;
+  await loadMessages();
+  await api.put(`/messages/read/${otherId}`);
+  loadContacts();
+  // Send
+  document.getElementById('send-btn').onclick = sendMessage;
+  document.getElementById('msg-input').onkeyup = e => { if(e.key==='Enter') sendMessage(); };
+  // Poll
+  if(pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(loadMessages, 5000);
+}
+
+async function loadMessages(){
+  if(!activeChatId) return;
+  try{
+    const res = await api.get(`/messages/chat/${activeChatId}?page=1&size=100`);
+    const msgs = res.data.records;
+    const el = document.getElementById('chat-msgs');
+    if(!el) return;
+    el.innerHTML = msgs.map(m=>`
+      <div class="chat-msg ${m.fromUserId==currentUser.id?'sent':'received'}">
+        <div>${m.content}</div>
+        <div class="chat-msg-time">${Utils.timeAgo(m.createTime)}</div>
+      </div>
+    `).join('');
+    el.scrollTop = el.scrollHeight;
+  }catch{}
+}
+
+async function sendMessage(){
+  const input = document.getElementById('msg-input');
+  if(!input) return;
+  const content = input.value.trim();
+  if(!content) return;
+  try{
+    await api.post('/messages',{toUserId:activeChatId.toString(),content});
+    input.value = '';
+    await loadMessages();
+    loadContacts();
+  }catch{}
+}
+</script>
+</body>
+</html>

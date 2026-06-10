@@ -1,0 +1,34 @@
+# Maven build output
+backend/target/
+
+# IDE files
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Uploads (keep directory structure, ignore uploaded files)
+backend/uploads/**/*
+!backend/uploads/**/.gitkeep
+
+# Environment files
+.env
+.env.*
+application-local.properties
+application-local.yml
+
+# Logs
+*.log
+logs/
+
+# Node / Frontend build (if any in future)
+node_modules/
+dist/
+build/

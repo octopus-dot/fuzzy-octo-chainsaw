@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>推荐 - 社交运营系统</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="navbar" id="navbar"></div>
+<div class="container">
+  <div class="section-header">
+    <h2>⭐ 推荐帖子</h2>
+    <button class="btn btn-primary btn-sm" onclick="refreshPosts()">🔄 刷新</button>
+  </div>
+  <div class="news-grid" id="post-list"></div>
+  <div class="load-more" id="load-more"></div>
+</div>
+<script src="js/api.js"></script>
+<script src="js/utils.js"></script>
+<script>
+let page = 1, total = 0, allPosts = [];
+const PAGE_SIZE = 12;
+
+document.addEventListener('DOMContentLoaded', () => {
+  Utils.renderNavbar('navbar');
+  loadPosts(true);
+});
+
+async function loadPosts(reset = false) {
+  if (reset) { page = 1; allPosts = []; }
+  try {
+    const res = await PostAPI.getRecommended(page, PAGE_SIZE);
+    if (reset) allPosts = res.data.records;
+    else allPosts = allPosts.concat(res.data.records);
+    total = res.data.total;
+    renderPosts();
+    renderLoadMore();
+    page++;
+  } catch {}
+}
+
+function refreshPosts() {
+  // Re-fetch from page 1, then shuffle for random display
+  (async () => {
+    try {
+      const res = await PostAPI.getRecommended(1, 100);
+      allPosts = res.data.records;
+      total = res.data.total;
+      // Shuffle
+      for (let i = allPosts.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [allPosts[i], allPosts[j]] = [allPosts[j], allPosts[i]];
+      }
+      allPosts = allPosts.slice(0, PAGE_SIZE);
+      page = 2;
+      renderPosts();
+      renderLoadMore();
+    } catch {}
+  })();
+}
+
+function renderPosts() {
+  const el = document.getElementById('post-list');
+  if (allPosts.length === 0) {
+    el.innerHTML = '<div class="empty" style="grid-column:1/-1;"><div class="empty-icon">📭</div><p>暂无推荐帖子</p></div>';
+    return;
+  }
+  el.innerHTML = allPosts.map(p => `
+    <div class="card">
+      ${Utils.firstImage(p.imageUrls) ? `<img src="${Utils.firstImage(p.imageUrls)}" class="card-image" style="width:100%;height:180px;object-fit:cover;" />` : ''}
+      <div style="padding:4px 0;">
+        <span class="card-category">${p.categoryName || ''}</span>
+      </div>
+      <div class="card-title"><a href="post-detail.html?id=${p.id}">${p.title}</a></div>
+      <p class="card-excerpt">${Utils.excerpt(p.content, 80)}</p>
+      <div class="card-footer" style="margin-top:auto;">
+        <a href="user-profile.html?id=${p.userId}" style="display:flex;align-items:center;gap:6px;text-decoration:none;">
+          <img src="${Utils.avatarUrl(p.avatarUrl)}" class="card-avatar" style="width:24px;height:24px;"
+               onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+          <div class="card-avatar-placeholder" style="display:${p.avatarUrl?'none':'flex'};width:24px;height:24px;font-size:12px;">
+            ${(p.nickname||p.username||'?')[0]}
+          </div>
+          <span style="font-size:12px;color:var(--text-secondary);">${p.nickname||p.username}</span>
+        </a>
+        <span style="margin-left:auto;font-size:12px;color:var(--text-light);">${Utils.timeAgo(p.createTime)}</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);align-items:center;">
+        <button class="post-like-btn ${p.isLiked?'liked':''}" data-id="${p.id}" data-liked="${p.isLiked}" data-count="${p.likeCount||0}">
+          ${p.isLiked?'❤️':'🤍'} <span class="post-like-count">${p.likeCount||0}</span>
+        </button>
+        <button class="btn btn-sm ${p.isFavorited?'btn-primary':'btn-outline'} fav-btn" data-id="${p.id}" data-fav="${p.isFavorited}">
+          ⭐
+        </button>
+        <a href="post-detail.html?id=${p.id}" class="btn btn-sm btn-outline">详情</a>
+        ${Utils.isLoggedIn()?`<button class="btn btn-sm btn-outline report-btn" data-id="${p.id}" style="color:var(--danger);margin-left:auto;">🚩</button>`:''}
+      </div>
+    </div>
+  `).join('');
+
+  // Like buttons
+  el.querySelectorAll('.post-like-btn').forEach(btn => {
+    btn.onclick = async function() {
+      if (!Utils.isLoggedIn()) { window.location.href = '/login.html'; return; }
+      const pid = this.dataset.id;
+      try {
+        const res = await api.post(`/posts/like/${pid}`);
+        const liked = res.data.liked;
+        const countSpan = this.querySelector('.post-like-count');
+        let count = parseInt(this.dataset.count) + (liked ? 1 : -1);
+        this.dataset.liked = liked; this.dataset.count = Math.max(0, count);
+        this.className = `post-like-btn ${liked?'liked':''}`;
+        this.innerHTML = `${liked?'❤️':'🤍'} <span class="post-like-count">${Math.max(0, count)}</span>`;
+      } catch {}
+    };
+  });
+
+  el.querySelectorAll('.fav-btn').forEach(btn => {
+    btn.onclick = async function() {
+      const pid = this.dataset.id;
+      const isFav = this.dataset.fav === 'true';
+      const result = await Utils.toggleFavorite(pid, isFav);
+      if (result !== null) {
+        this.dataset.fav = result;
+        this.className = `btn btn-sm ${result?'btn-primary':'btn-outline'} fav-btn`;
+      }
+    };
+  });
+  el.querySelectorAll('.report-btn').forEach(btn => {
+    btn.onclick = function(e) { e.stopPropagation(); showReportDialog(this.dataset.id); };
+  });
+}
+
+function renderLoadMore() {
+  const el = document.getElementById('load-more');
+  if (allPosts.length < total) {
+    el.innerHTML = `<button class="btn btn-outline btn-block" onclick="loadPosts()">加载更多 (${allPosts.length}/${total})</button>`;
+  } else {
+    el.innerHTML = allPosts.length > 0 ? '<p style="text-align:center;color:var(--text-light);font-size:13px;">— 已经到底了 —</p>' : '';
+  }
+}
+
+function showReportDialog(postId) {
+  const reasons = ['垃圾广告','色情低俗','侵权内容','其他'];
+  const overlay = document.createElement('div'); overlay.className='modal-overlay';
+  overlay.innerHTML = `<div class="modal"><h3>🚩 举报帖子</h3>
+    <div class="report-options">${reasons.map(r=>`<div class="report-option" data-reason="${r}">${r}</div>`).join('')}</div>
+    <textarea class="form-textarea mt-8" id="report-desc" placeholder="补充说明（可选）" rows="2"></textarea>
+    <div class="modal-actions">
+      <button class="btn btn-outline cancel-btn">取消</button>
+      <button class="btn btn-danger confirm-btn">提交举报</button>
+    </div></div>`;
+  document.body.appendChild(overlay);
+  let sel='';
+  overlay.querySelectorAll('.report-option').forEach(o=>o.onclick=function(){
+    overlay.querySelectorAll('.report-option').forEach(x=>x.classList.remove('selected'));
+    this.classList.add('selected');sel=this.dataset.reason;
+  });
+  overlay.querySelector('.cancel-btn').onclick=()=>overlay.remove();
+  overlay.querySelector('.confirm-btn').onclick=async()=>{
+    if(!sel){Utils.toast('请选择举报原因','error');return;}
+    try{await api.post(`/report/${postId}`,{reason:sel,description:document.getElementById('report-desc').value});Utils.toast('举报已提交','success');overlay.remove();}catch{}
+  };
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove();};
+}
+</script>
+</body>
+</html>

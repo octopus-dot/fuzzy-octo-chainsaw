@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>发布帖子 - 社交运营系统</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="navbar" id="navbar"></div>
+  <div class="container">
+    <h2 style="margin-bottom:20px;">📝 发布帖子</h2>
+    <div class="card">
+      <form id="upload-form">
+        <div class="form-group">
+          <label>标题 *</label>
+          <input type="text" class="form-input" id="title" placeholder="请输入帖子标题" maxlength="200" required />
+        </div>
+        <div class="form-group">
+          <label>分类 *</label>
+          <select class="form-select" id="category" required>
+            <option value="">请选择分类</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>正文 *</label>
+          <textarea class="form-textarea" id="content" placeholder="请输入帖子内容..." required></textarea>
+        </div>
+        <div class="form-group">
+          <label>图片（至少上传一张，支持多张）</label>
+          <input type="file" id="images" accept=".jpg,.jpeg,.png" multiple style="margin-top:6px;" />
+          <p class="form-hint">JPG/PNG，单张最大5MB。可一次选择多张。</p>
+          <div class="image-grid" id="image-preview"></div>
+        </div>
+        <button type="submit" class="btn btn-primary" id="submit-btn">提交审核</button>
+        <a href="index.html" class="btn btn-outline">取消</a>
+      </form>
+    </div>
+  </div>
+  <script src="js/api.js"></script>
+  <script src="js/utils.js"></script>
+  <script>
+    if (!Utils.isLoggedIn()) { window.location.href = '/login.html'; }
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      Utils.renderNavbar('navbar');
+      // Load categories
+      try {
+        const res = await CategoryAPI.getAll();
+        document.getElementById('category').innerHTML = '<option value="">请选择分类</option>' +
+          res.data.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+      } catch {}
+    });
+
+    // Image preview
+    document.getElementById('images').onchange = function() {
+      const preview = document.getElementById('image-preview');
+      preview.innerHTML = '';
+      Array.from(this.files).forEach(file => {
+        if (file.size > 5 * 1024 * 1024) {
+          Utils.toast(`${file.name} 超过5MB限制`, 'error');
+          return;
+        }
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = document.createElement('img');
+          img.src = e.target.result;
+          preview.appendChild(img);
+        };
+        reader.readAsDataURL(file);
+      });
+    };
+
+    document.getElementById('upload-form').onsubmit = async function(e) {
+      e.preventDefault();
+      const title = document.getElementById('title').value.trim();
+      const categoryId = document.getElementById('category').value;
+      const content = document.getElementById('content').value.trim();
+      const files = document.getElementById('images').files;
+
+      if (!title || !categoryId || !content) {
+        Utils.toast('请填写所有必填项', 'error'); return;
+      }
+      if (files.length === 0) {
+        Utils.toast('请至少上传一张图片', 'error'); return;
+      }
+
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      btn.textContent = '提交中...';
+
+      try {
+        const fd = new FormData();
+        fd.append('title', title);
+        fd.append('content', content);
+        fd.append('categoryId', categoryId);
+        Array.from(files).forEach(f => fd.append('images', f));
+
+        await PostAPI.upload(fd);
+        Utils.toast('帖子提交成功，等待审核', 'success');
+        setTimeout(() => { window.location.href = '/profile.html'; }, 1000);
+      } catch {
+        btn.disabled = false;
+        btn.textContent = '提交审核';
+      }
+    };
+  </script>
+</body>
+</html>

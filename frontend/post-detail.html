@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>帖子详情 - 社交运营系统</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="navbar" id="navbar"></div>
+  <div class="container">
+    <a href="index.html" style="font-size:14px;">← 返回</a>
+    <div id="post-detail" style="margin-top:12px;"></div>
+    <div class="comment-section" id="comment-section" style="margin-top:24px;"></div>
+  </div>
+  <script src="js/api.js"></script>
+  <script src="js/utils.js"></script>
+  <script>
+    const postId = new URLSearchParams(window.location.search).get('id');
+    const user = Utils.getUser();
+    let commentPage = 1;
+    let commentTotal = 0;
+    let comments = [];
+
+    document.addEventListener('DOMContentLoaded', () => {
+      Utils.renderNavbar('navbar');
+      if (postId) {
+        loadPost();
+        loadComments(true);
+      }
+    });
+
+    async function loadPost() {
+      try {
+        const res = await PostAPI.getDetail(postId);
+        const p = res.data;
+        const images = Utils.parseImages(p.imageUrls);
+        document.getElementById('post-detail').innerHTML = `
+          <div class="card">
+            <h1 style="font-size:22px;margin-bottom:12px;">${p.title}</h1>
+            <div class="card-header" style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #eee;">
+              <a href="user-profile.html?id=${p.userId}" style="flex-shrink:0;">
+                <img src="${Utils.avatarUrl(p.avatarUrl)}" class="card-avatar"
+                     onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+                <div class="card-avatar-placeholder" style="display:${p.avatarUrl ? 'none' : 'flex'}">
+                  ${(p.nickname || p.username || '?')[0]}
+                </div>
+              </a>
+              <div class="card-meta">
+                <a href="user-profile.html?id=${p.userId}" class="author" style="text-decoration:none;">${p.nickname || p.username}</a>
+                <span> · ${Utils.formatDateTime(p.createTime)}</span>
+                <span> · ${p.categoryName || ''}</span>
+                ${p.isRecommended ? '<span class="badge badge-featured">推荐</span>' : ''}
+              </div>
+            </div>
+            ${images.length > 0 ? `<div class="image-grid">${images.map(img => `<img src="${img}" />`).join('')}</div>` : ''}
+            <div style="font-size:15px;line-height:1.8;color:#444;margin-top:16px;">${p.content}</div>
+            <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              ${Utils.isLoggedIn() ? `
+                <button class="post-like-btn ${p.isLiked?'liked':''}" id="like-btn" data-id="${p.id}" data-liked="${p.isLiked}" data-count="${p.likeCount||0}">
+                  ${p.isLiked?'❤️':'🤍'} <span class="post-like-count">${p.likeCount||0}</span>
+                </button>
+                <button class="btn btn-sm ${p.isFavorited ? 'btn-primary' : 'btn-outline'}" id="fav-btn" data-fav="${p.isFavorited}">
+                  ⭐ ${p.isFavorited ? '已收藏' : '收藏'}
+                </button>
+                <button class="btn btn-sm btn-outline" id="report-btn" style="color:var(--danger);">🚩 举报</button>
+              ` : ''}
+            </div>
+          </div>
+        `;
+        // Like button
+        const likeBtn = document.getElementById('like-btn');
+        if (likeBtn) {
+          likeBtn.onclick = async function() {
+            try {
+              const res = await api.post(`/posts/like/${postId}`);
+              const liked = res.data.liked; const cs = this.querySelector('.post-like-count');
+              let c = parseInt(this.dataset.count) + (liked ? 1 : -1);
+              this.dataset.liked = liked; this.dataset.count = Math.max(0, c);
+              this.className = `post-like-btn ${liked?'liked':''}`;
+              this.innerHTML = `${liked?'❤️':'🤍'} <span class="post-like-count">${Math.max(0,c)}</span>`;
+            } catch {}
+          };
+        }
+        // Favorite button
+        const favBtn = document.getElementById('fav-btn');
+        if (favBtn) {
+          favBtn.onclick = async function() {
+            const isFav = this.dataset.fav === 'true';
+            const result = await Utils.toggleFavorite(postId, isFav);
+            if (result !== null) {
+              this.dataset.fav = result;
+              this.className = `btn btn-sm ${result ? 'btn-primary' : 'btn-outline'}`;
+              this.textContent = `⭐ ${result ? '已收藏' : '收藏'}`;
+            }
+          };
+        }
+        // Report button
+        const reportBtn = document.getElementById('report-btn');
+        if (reportBtn) {
+          reportBtn.onclick = () => showReportDialog(postId);
+        }
+      } catch {}
+    }
+
+    async function loadComments(reset = false) {
+      if (reset) { commentPage = 1; comments = []; }
+      try {
+        const res = await CommentAPI.getByPost(postId, commentPage, 10);
+        if (reset) comments = res.data.records;
+        else comments = comments.concat(res.data.records);
+        commentTotal = res.data.total;
+        renderComments();
+        commentPage++;
+      } catch {}
+    }
+
+    function renderComments() {
+      const el = document.getElementById('comment-section');
+      let html = `<h3 style="margin-bottom:16px;">💬 评论 (${commentTotal})</h3>`;
+
+      // Comment input for logged-in users
+      if (Utils.isLoggedIn()) {
+        html += `
+          <div class="comment-input">
+            <textarea class="form-textarea" id="comment-input" placeholder="写评论...（最多500字）" maxlength="500" rows="3"></textarea>
+            <button class="btn btn-primary btn-sm" style="margin-top:8px;" id="submit-comment">发表评论</button>
+          </div>
+        `;
+      } else {
+        html += `<p style="text-align:center;color:#aaa;font-size:13px;margin-bottom:16px;">
+          <a href="login.html">登录</a> 后可以发表评论
+        </p>`;
+      }
+
+      if (comments.length === 0) {
+        html += '<div class="empty"><p>暂无评论</p></div>';
+      } else {
+        html += comments.map(c => `
+          <div class="comment-item">
+            <a href="user-profile.html?id=${c.userId}" style="flex-shrink:0;">
+              <img src="${Utils.avatarUrl(c.avatarUrl)}" class="card-avatar"
+                   onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+              <div class="card-avatar-placeholder" style="display:${c.avatarUrl ? 'none' : 'flex'};width:36px;height:36px;">
+                ${(c.nickname || '?')[0]}
+              </div>
+            </a>
+            <div class="comment-body">
+              <div class="comment-header">
+                <a href="user-profile.html?id=${c.userId}" class="comment-nick" style="text-decoration:none;color:#333;">${c.nickname}</a>
+                <span class="comment-time">${Utils.timeAgo(c.createTime)}</span>
+              </div>
+              <p class="comment-text">${c.content}</p>
+              <div class="comment-actions">
+                <button class="like-btn ${c.isLiked ? 'liked' : ''}" data-cid="${c.id}" data-liked="${c.isLiked}" data-count="${c.likeCount}">
+                  ${c.isLiked ? '❤️' : '🤍'} <span class="like-count">${c.likeCount || 0}</span>
+                </button>
+                ${user && user.id === c.userId ? `<button class="delete-btn" data-cid="${c.id}">删除</button>` : ''}
+              </div>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      if (comments.length < commentTotal) {
+        html += `<div class="load-more"><button class="btn btn-outline btn-sm" id="load-more-comments">加载更多评论</button></div>`;
+      }
+      el.innerHTML = html;
+
+      // Submit comment
+      const submitBtn = document.getElementById('submit-comment');
+      if (submitBtn) {
+        submitBtn.onclick = async function() {
+          const content = document.getElementById('comment-input').value.trim();
+          if (!content) { Utils.toast('评论内容不能为空', 'error'); return; }
+          try {
+            await CommentAPI.create(postId, content);
+            Utils.toast('评论发表成功', 'success');
+            document.getElementById('comment-input').value = '';
+            loadComments(true);
+          } catch {}
+        };
+      }
+
+      // Like buttons
+      el.querySelectorAll('.like-btn').forEach(btn => {
+        btn.onclick = async function() {
+          if (!Utils.isLoggedIn()) { window.location.href = '/login.html'; return; }
+          const cid = this.dataset.cid;
+          try {
+            const res = await CommentAPI.toggleLike(cid);
+            const liked = res.data.liked;
+            const countSpan = this.querySelector('.like-count');
+            const newCount = parseInt(countSpan.textContent) + (liked ? 1 : -1);
+            this.dataset.liked = liked;
+            this.dataset.count = newCount;
+            this.className = `like-btn ${liked ? 'liked' : ''}`;
+            this.innerHTML = `${liked ? '❤️' : '🤍'} <span class="like-count">${Math.max(0, newCount)}</span>`;
+          } catch {}
+        };
+      });
+
+      // Delete buttons
+      el.querySelectorAll('.delete-btn').forEach(btn => {
+        btn.onclick = function() {
+          const cid = this.dataset.cid;
+          Utils.showModal('确认删除', '<p>确定要删除这条评论吗？删除后无法恢复。</p>', async () => {
+            try {
+              await CommentAPI.delete(cid);
+              Utils.toast('评论已删除', 'success');
+              loadComments(true);
+            } catch {}
+          });
+        };
+      });
+
+      // Load more
+      const loadMoreBtn = document.getElementById('load-more-comments');
+      if (loadMoreBtn) {
+        loadMoreBtn.onclick = () => loadComments();
+      }
+    }
+
+    function showReportDialog(postId) {
+      const reasons=['垃圾广告','色情低俗','侵权内容','其他'];
+      const overlay=document.createElement('div');overlay.className='modal-overlay';
+      overlay.innerHTML=`<div class="modal"><h3>🚩 举报帖子</h3>
+        <div class="report-options">${reasons.map(r=>`<div class="report-option" data-reason="${r}">${r}</div>`).join('')}</div>
+        <textarea class="form-textarea mt-8" id="report-desc" placeholder="补充说明（可选）" rows="2"></textarea>
+        <div class="modal-actions"><button class="btn btn-outline cancel-btn">取消</button><button class="btn btn-danger confirm-btn">提交举报</button></div></div>`;
+      document.body.appendChild(overlay);let sel='';
+      overlay.querySelectorAll('.report-option').forEach(o=>o.onclick=function(){overlay.querySelectorAll('.report-option').forEach(x=>x.classList.remove('selected'));this.classList.add('selected');sel=this.dataset.reason;});
+      overlay.querySelector('.cancel-btn').onclick=()=>overlay.remove();
+      overlay.querySelector('.confirm-btn').onclick=async()=>{if(!sel){Utils.toast('请选择举报原因','error');return;}try{await api.post(`/report/${postId}`,{reason:sel,description:document.getElementById('report-desc').value});Utils.toast('举报已提交','success');overlay.remove();}catch{}};
+      overlay.onclick=e=>{if(e.target===overlay)overlay.remove();};
+    }
+  </script>
+</body>
+</html>

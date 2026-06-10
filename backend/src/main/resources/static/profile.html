@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>个人主页 - 社交运营系统</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="navbar" id="navbar"></div>
+<div class="container">
+  <div id="profile-header-section" style="margin-top:8px;"></div>
+  <div class="tabs" style="margin-top:20px;">
+    <button class="tab active" data-tab="posts">我的帖子</button>
+    <button class="tab" data-tab="favorites">我的收藏</button>
+    <button class="tab" data-tab="comments">我的评论</button>
+    <button class="tab" data-tab="friends">好友管理</button>
+    <button class="tab" data-tab="reports">我的举报</button>
+    <button class="tab" data-tab="likes">赞通知</button>
+    <button class="tab" data-tab="settings">个人设置</button>
+  </div>
+  <div class="tab-panel active" id="tab-posts"></div>
+  <div class="tab-panel" id="tab-favorites"></div>
+  <div class="tab-panel" id="tab-comments"></div>
+  <div class="tab-panel" id="tab-friends"></div>
+  <div class="tab-panel" id="tab-reports"></div>
+  <div class="tab-panel" id="tab-likes"></div>
+  <div class="tab-panel" id="tab-settings"></div>
+</div>
+<script src="js/api.js"></script>
+<script src="js/utils.js"></script>
+<script>
+if (!Utils.isLoggedIn()) { window.location.href = '/login.html'; }
+const user = Utils.getUser();
+
+document.addEventListener('DOMContentLoaded', () => {
+  Utils.renderNavbar('navbar');
+  renderProfileHeader();
+  loadMyPosts();
+  setupTabs();
+});
+
+function setupTabs() {
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.onclick = function() {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+      this.classList.add('active');
+      document.getElementById('tab-' + this.dataset.tab).classList.add('active');
+      const n = this.dataset.tab;
+      if (n === 'favorites') loadFavorites();
+      if (n === 'comments') loadMyComments();
+      if (n === 'friends') loadFriendsTab();
+      if (n === 'reports') loadReportsTab();
+      if (n === 'likes') loadLikesTab();
+      if (n === 'settings') renderSettings();
+    };
+  });
+}
+
+function renderProfileHeader() {
+  document.getElementById('profile-header-section').innerHTML = `
+    <div class="profile-header">
+      <div style="position:relative;">
+        <div class="profile-bg"></div>
+      </div>
+      <div class="profile-info">
+        <div style="position:relative;">
+          <img src="${Utils.avatarUrl(user.avatarUrl)}" class="profile-avatar-lg" id="avatar-preview-lg"
+               onerror="this.src='/default-avatar.png'" />
+          <button class="edit-overlay" onclick="document.getElementById('avatar-file-lg').click()">📷</button>
+          <input type="file" id="avatar-file-lg" accept=".jpg,.jpeg,.png" style="display:none" onchange="uploadAvatarLg(this)" />
+        </div>
+        <div class="profile-details">
+          <div class="profile-nickname">${user.nickname || user.username}</div>
+          <div class="profile-bio" id="bio-display">${user.bio || '这个人很懒，什么都没写...'}</div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+async function uploadAvatarLg(input) {
+  const file = input.files[0]; if (!file) return;
+  if (file.size > 2 * 1024 * 1024) { Utils.toast('头像不能超过2MB', 'error'); return; }
+  try {
+    const res = await UserAPI.uploadAvatar(file);
+    localStorage.setItem('user', JSON.stringify(res.data));
+    document.getElementById('avatar-preview-lg').src = Utils.avatarUrl(res.data.avatarUrl) + '?t=' + Date.now();
+    Utils.toast('头像已更新', 'success');
+    Utils.renderNavbar('navbar');
+  } catch {}
+}
+
+
+// ---- My Posts ----
+async function loadMyPosts() {
+  try {
+    const res = await UserAPI.getUserPosts(1, 50); const posts = res.data.records;
+    const el = document.getElementById('tab-posts');
+    if (posts.length === 0) { el.innerHTML = '<div class="empty"><p>还没有发布帖子</p></div>'; return; }
+    el.innerHTML = posts.map(p => `
+      <div class="card">
+        <div class="card-title"><a href="post-detail.html?id=${p.id}">${p.title}</a></div>
+        <div class="card-footer">
+          <span class="badge badge-${p.status}">${p.status==='pending'?'待审核':p.status==='approved'?'已通过':'已退回'}</span>
+          <span style="font-size:12px;color:#aaa;">${Utils.formatDate(p.createTime)}</span>
+          <button class="btn btn-sm btn-outline del-post-btn" data-id="${p.id}" style="color:var(--danger);margin-left:auto;">删除</button>
+        </div>
+        ${p.status==='rejected'&&p.rejectReason?`<div class="reject-box">退回理由：${p.rejectReason}</div>`:''}
+      </div>
+    `).join('');
+    el.querySelectorAll('.del-post-btn').forEach(b => b.onclick = function() {
+      Utils.showModal('确认删除', '<p>确定要删除此帖子吗？删除后不可恢复。</p>', async () => {
+        await api.delete(`/posts/${this.dataset.id}`); Utils.toast('已删除', 'success'); loadMyPosts();
+      });
+    });
+  } catch {}
+}
+
+// ---- Favorites ----
+async function loadFavorites() {
+  const el = document.getElementById('tab-favorites'); if(el.dataset.loaded)return; el.dataset.loaded='1';
+  try {
+    const res = await FavoriteAPI.list(1,50); const posts = res.data.records;
+    if(posts.length===0){el.innerHTML='<div class="empty"><p>还没有收藏帖子</p></div>';return;}
+    el.innerHTML = posts.map(p=>`
+      <div class="card">
+        <div class="card-title"><a href="post-detail.html?id=${p.id}">${p.title}</a></div>
+        <button class="btn btn-sm btn-outline unfav-btn" data-id="${p.id}">取消收藏</button>
+      </div>
+    `).join('');
+    el.querySelectorAll('.unfav-btn').forEach(b=>b.onclick=async function(){
+      await FavoriteAPI.remove(this.dataset.id); Utils.toast('已取消收藏','success'); this.closest('.card').remove();
+    });
+  } catch {}
+}
+
+// ---- Comments ----
+async function loadMyComments() {
+  const el = document.getElementById('tab-comments'); if(el.dataset.loaded)return; el.dataset.loaded='1';
+  try {
+    const res = await UserAPI.getUserComments(1,50); const list = res.data.records;
+    if(list.length===0){el.innerHTML='<div class="empty"><p>还没有发表评论</p></div>';return;}
+    el.innerHTML = list.map(c=>`
+      <div class="card">
+        <div class="card-title" style="font-size:14px;"><a href="post-detail.html?id=${c.postId}">📄 ${c.postTitle||'(已删除)'}</a></div>
+        <p class="card-excerpt">${Utils.excerpt(c.content,100)}</p>
+        <div class="card-footer">
+          <span>❤️ ${c.likeCount||0}</span>
+          <button class="btn btn-sm btn-outline del-comment-btn" data-cid="${c.id}" style="color:var(--danger);margin-left:auto;">删除</button>
+        </div>
+      </div>
+    `).join('');
+    el.querySelectorAll('.del-comment-btn').forEach(b=>b.onclick=function(){
+      Utils.showModal('确认删除','<p>确定删除此评论？</p>',async()=>{
+        await CommentAPI.delete(this.dataset.cid); Utils.toast('已删除','success'); el.dataset.loaded=''; loadMyComments();
+      });
+    });
+  } catch {}
+}
+
+// ---- Friends ----
+async function loadFriendsTab() {
+  const el = document.getElementById('tab-friends'); if(el.dataset.loaded)return; el.dataset.loaded='1';
+  el.innerHTML = `
+    <h3 style="margin-bottom:12px;">📥 收到的好友申请</h3>
+    <div id="friend-requests"></div>
+    <h3 style="margin:20px 0 12px;">👥 我的好友</h3>
+    <div id="friend-list"></div>
+  `;
+  try {
+    const reqRes = await api.get('/friend/requests?page=1&size=50');
+    const reqs = reqRes.data.records;
+    const reqEl = document.getElementById('friend-requests');
+    if(reqs.length===0){reqEl.innerHTML='<div class="empty"><p>暂无申请</p></div>';}
+    else {
+      reqEl.innerHTML = reqs.map(r=>`
+        <div class="card flex-between">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <img src="${Utils.avatarUrl(r.fromUserAvatar)}" class="card-avatar"
+                 onerror="this.style.display='none'" />
+            <span>${r.fromUserName}</span>
+          </div>
+          <div>
+            <button class="btn btn-primary btn-sm accept-btn" data-id="${r.id}">同意</button>
+            <button class="btn btn-outline btn-sm reject-btn" data-id="${r.id}">拒绝</button>
+          </div>
+        </div>
+      `).join('');
+      reqEl.querySelectorAll('.accept-btn').forEach(b=>b.onclick=function(){
+        api.put(`/friend/request/${this.dataset.id}`,{action:'accept'}).then(()=>{Utils.toast('已同意','success');el.dataset.loaded='';loadFriendsTab();});
+      });
+      reqEl.querySelectorAll('.reject-btn').forEach(b=>b.onclick=function(){
+        api.put(`/friend/request/${this.dataset.id}`,{action:'reject'}).then(()=>{Utils.toast('已拒绝','info');el.dataset.loaded='';loadFriendsTab();});
+      });
+    }
+    // Friends list
+    const fRes = await api.get('/friends');
+    const flEl = document.getElementById('friend-list');
+    if(fRes.data.length===0){flEl.innerHTML='<div class="empty"><p>暂无好友</p></div>';}
+    else {
+      flEl.innerHTML = fRes.data.map(f=>`
+        <div class="card flex-between">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <img src="${Utils.avatarUrl(f.avatarUrl)}" class="card-avatar" onerror="this.style.display='none'" />
+            <a href="user-profile.html?id=${f.id}">${f.nickname||f.username}</a>
+          </div>
+          <a href="chat.html?id=${f.id}" class="btn btn-primary btn-sm">💬 发消息</a>
+        </div>
+      `).join('');
+    }
+  } catch {}
+}
+
+// ---- Reports ----
+async function loadReportsTab() {
+  const el = document.getElementById('tab-reports'); if(el.dataset.loaded)return; el.dataset.loaded='1';
+  try {
+    const res = await api.get('/user/reports?page=1&size=50'); const list = res.data.records;
+    if(list.length===0){el.innerHTML='<div class="empty"><p>暂无举报记录</p></div>';return;}
+    el.innerHTML = list.map(r=>`
+      <div class="card">
+        <div class="card-title" style="font-size:14px;">📄 ${r.postTitle||'(已删除)'}</div>
+        <p>举报原因：${r.reason} ${r.description||''}</p>
+        <div class="card-footer">
+          <span class="badge badge-${r.status==='pending'?'pending':r.status==='handled'?'approved':'rejected'}">${r.status==='pending'?'待处理':r.status==='handled'?'已处理':'已驳回'}</span>
+          ${r.status==='pending'?`<button class="btn btn-sm btn-outline cancel-report-btn" data-pid="${r.postId}" style="color:var(--danger);">撤回举报</button>`:''}
+        </div>
+      </div>
+    `).join('');
+    el.querySelectorAll('.cancel-report-btn').forEach(b=>b.onclick=async function(){
+      await api.delete(`/report/${this.dataset.pid}`); Utils.toast('举报已撤回','success'); el.dataset.loaded=''; loadReportsTab();
+    });
+  } catch {}
+}
+
+// ---- Likes Notifications ----
+async function loadLikesTab() {
+  const el = document.getElementById('tab-likes'); if(el.dataset.loaded)return; el.dataset.loaded='1';
+  try {
+    const res = await api.get('/user/notifications');
+    const list = res.data;
+    if(list.length===0){el.innerHTML='<div class="empty"><p>暂无点赞通知</p></div>';return;}
+    el.innerHTML = list.map(n=>`
+      <div class="card">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <a href="user-profile.html?id=${n.fromUserId}">
+            <img src="${Utils.avatarUrl(n.fromUserAvatar)}" class="card-avatar" onerror="this.style.display='none'" />
+          </a>
+          <div style="flex:1;">
+            <a href="user-profile.html?id=${n.fromUserId}" style="font-weight:600;color:var(--text);">${n.fromUserName}</a>
+            <span style="color:var(--text-secondary);"> 赞了你的帖子 </span>
+            <a href="post-detail.html?id=${n.postId}" style="color:var(--primary);">${n.postTitle||'(已删除)'}</a>
+            <div style="font-size:12px;color:var(--text-light);">${Utils.timeAgo(n.createTime)}</div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  } catch {}
+}
+
+// ---- Settings ----
+function renderSettings() {
+  const el = document.getElementById('tab-settings'); if(el.dataset.loaded)return; el.dataset.loaded='1';
+  el.innerHTML = `
+    <div class="card">
+      <h3>修改昵称</h3>
+      <div class="form-group"><input type="text" class="form-input" id="nickname-input" value="${user.nickname||''}" placeholder="新昵称" />
+      <button class="btn btn-primary btn-sm mt-8" id="save-nickname">保存</button></div>
+    </div>
+    <div class="card">
+      <h3>编辑个性签名</h3>
+      <div class="form-group"><input type="text" class="form-input" id="bio-input" value="${user.bio||''}" placeholder="写一句个性签名..." maxlength="255" />
+      <button class="btn btn-primary btn-sm mt-8" id="save-bio">保存</button></div>
+    </div>
+    <div class="card">
+      <h3>修改密码</h3>
+      <div class="form-group"><input type="password" class="form-input" id="old-pwd" placeholder="旧密码" /></div>
+      <div class="form-group"><input type="password" class="form-input" id="new-pwd" placeholder="新密码（至少6位）" /></div>
+      <div class="form-group"><input type="password" class="form-input" id="confirm-pwd" placeholder="确认新密码" /></div>
+      <button class="btn btn-primary btn-sm" id="save-password">更新密码</button>
+    </div>
+  `;
+  document.getElementById('save-nickname').onclick = async () => {
+    const v = document.getElementById('nickname-input').value.trim();
+    if(!v){Utils.toast('昵称不能为空','error');return;}
+    const res = await UserAPI.updateNickname(v); localStorage.setItem('user',JSON.stringify(res.data));
+    Utils.toast('昵称已更新','success'); Utils.renderNavbar('navbar');
+  };
+  document.getElementById('save-bio').onclick = async () => {
+    const res = await api.put('/user/profile/bio',{bio:document.getElementById('bio-input').value});
+    localStorage.setItem('user',JSON.stringify(res.data));
+    document.getElementById('bio-display').textContent = res.data.bio||'这个人很懒，什么都没写...';
+    Utils.toast('签名已更新','success');
+  };
+  document.getElementById('save-password').onclick = async () => {
+    const o=document.getElementById('old-pwd').value, n=document.getElementById('new-pwd').value, c=document.getElementById('confirm-pwd').value;
+    if(!o||!n){Utils.toast('请填写所有密码字段','error');return;}
+    if(n!==c){Utils.toast('两次密码不一致','error');return;}
+    await UserAPI.updatePassword(o,n); Utils.toast('密码更新成功','success');
+    document.getElementById('old-pwd').value=''; document.getElementById('new-pwd').value=''; document.getElementById('confirm-pwd').value='';
+  };
+}
+</script>
+</body>
+</html>

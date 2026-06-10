@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>分类 - 社交运营系统</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="navbar" id="navbar"></div>
+<div class="container">
+  <h2 style="margin-bottom:20px;" id="category-title">分类帖子</h2>
+  <div class="news-grid" id="post-list"></div>
+  <div id="pagination"></div>
+</div>
+<script src="js/api.js"></script>
+<script src="js/utils.js"></script>
+<script>
+const categoryId = new URLSearchParams(window.location.search).get('id');
+let page = 1, total = 0;
+
+document.addEventListener('DOMContentLoaded', async () => {
+  Utils.renderNavbar('navbar');
+  if (categoryId) {
+    try { const cats = await CategoryAPI.getAll();
+      const cat = cats.data.find(c => c.id == categoryId);
+      document.getElementById('category-title').textContent = `📂 ${cat ? cat.name : ''} 帖子`;
+    } catch {}
+    loadPosts();
+  }
+});
+
+async function loadPosts(p) {
+  if (p) page = p;
+  try {
+    const res = await PostAPI.getByCategory(categoryId, page, 10);
+    const posts = res.data.records; total = res.data.total;
+    const el = document.getElementById('post-list');
+    if (posts.length === 0) { el.innerHTML = '<div class="empty" style="grid-column:1/-1;"><p>该分类下暂无帖子</p></div>'; return; }
+    el.innerHTML = posts.map(p => `
+      <div class="card">
+        ${Utils.firstImage(p.imageUrls) ? `<img src="${Utils.firstImage(p.imageUrls)}" class="card-image" style="width:100%;height:180px;object-fit:cover;" />` : ''}
+        <div style="padding:4px 0;"><span class="card-category">${p.categoryName||''}</span></div>
+        <div class="card-title"><a href="post-detail.html?id=${p.id}">${p.title}</a></div>
+        <p class="card-excerpt">${Utils.excerpt(p.content, 80)}</p>
+        <div class="card-footer" style="margin-top:auto;">
+          <a href="user-profile.html?id=${p.userId}" style="display:flex;align-items:center;gap:6px;text-decoration:none;">
+            <img src="${Utils.avatarUrl(p.avatarUrl)}" class="card-avatar" style="width:24px;height:24px;"
+                 onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+            <div class="card-avatar-placeholder" style="display:${p.avatarUrl?'none':'flex'};width:24px;height:24px;font-size:12px;">${(p.nickname||p.username||'?')[0]}</div>
+            <span style="font-size:12px;color:var(--text-secondary);">${p.nickname||p.username}</span>
+          </a>
+          <span style="margin-left:auto;font-size:12px;color:var(--text-light);">${Utils.timeAgo(p.createTime)}</span>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px;padding-top:8px;border-top:1px solid var(--border);align-items:center;">
+          <button class="post-like-btn ${p.isLiked?'liked':''}" data-id="${p.id}" data-liked="${p.isLiked}" data-count="${p.likeCount||0}">
+            ${p.isLiked?'❤️':'🤍'} <span class="post-like-count">${p.likeCount||0}</span>
+          </button>
+          <button class="btn btn-sm ${p.isFavorited?'btn-primary':'btn-outline'} fav-btn" data-id="${p.id}" data-fav="${p.isFavorited}">⭐</button>
+          <a href="post-detail.html?id=${p.id}" class="btn btn-sm btn-outline">详情</a>
+          ${Utils.isLoggedIn()?`<button class="btn btn-sm btn-outline report-btn" data-id="${p.id}" style="color:var(--danger);margin-left:auto;">🚩</button>`:''}
+        </div>
+      </div>
+    `).join('');
+    // Like buttons
+    el.querySelectorAll('.post-like-btn').forEach(btn => { btn.onclick = async function() {
+      if(!Utils.isLoggedIn()){window.location.href='/login.html';return;}
+      try{const res=await api.post(`/posts/like/${this.dataset.id}`);const liked=res.data.liked;
+      const cs=this.querySelector('.post-like-count');let c=parseInt(this.dataset.count)+(liked?1:-1);
+      this.dataset.liked=liked;this.dataset.count=Math.max(0,c);
+      this.className=`post-like-btn ${liked?'liked':''}`;
+      this.innerHTML=`${liked?'❤️':'🤍'} <span class="post-like-count">${Math.max(0,c)}</span>`;}catch{}}
+    });
+    // Fav buttons
+    el.querySelectorAll('.fav-btn').forEach(btn => { btn.onclick = async function() {
+      const r=await Utils.toggleFavorite(this.dataset.id,this.dataset.fav==='true');
+      if(r!==null){this.dataset.fav=r;this.className=`btn btn-sm ${r?'btn-primary':'btn-outline'} fav-btn`;}}
+    });
+    // Report buttons
+    el.querySelectorAll('.report-btn').forEach(btn => { btn.onclick = function(e){e.stopPropagation();showReportDialog(this.dataset.id);} });
+    Utils.renderPagination('pagination', page, Math.ceil(total/10), loadPosts);
+  } catch {}
+}
+
+function showReportDialog(postId) {
+  const reasons=['垃圾广告','色情低俗','侵权内容','其他'];
+  const overlay=document.createElement('div');overlay.className='modal-overlay';
+  overlay.innerHTML=`<div class="modal"><h3>🚩 举报帖子</h3>
+    <div class="report-options">${reasons.map(r=>`<div class="report-option" data-reason="${r}">${r}</div>`).join('')}</div>
+    <textarea class="form-textarea mt-8" id="report-desc" placeholder="补充说明（可选）" rows="2"></textarea>
+    <div class="modal-actions"><button class="btn btn-outline cancel-btn">取消</button><button class="btn btn-danger confirm-btn">提交举报</button></div></div>`;
+  document.body.appendChild(overlay);let sel='';
+  overlay.querySelectorAll('.report-option').forEach(o=>o.onclick=function(){overlay.querySelectorAll('.report-option').forEach(x=>x.classList.remove('selected'));this.classList.add('selected');sel=this.dataset.reason;});
+  overlay.querySelector('.cancel-btn').onclick=()=>overlay.remove();
+  overlay.querySelector('.confirm-btn').onclick=async()=>{if(!sel){Utils.toast('请选择举报原因','error');return;}try{await api.post(`/report/${postId}`,{reason:sel,description:document.getElementById('report-desc').value});Utils.toast('举报已提交','success');overlay.remove();}catch{}};
+  overlay.onclick=e=>{if(e.target===overlay)overlay.remove();};
+}
+</script>
+</body>
+</html>

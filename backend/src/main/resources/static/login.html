@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>登录 - 社交运营系统</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="container">
+    <div class="auth-page">
+      <div class="auth-card">
+        <h2>🔐 登录</h2>
+        <form id="login-form">
+          <div class="form-group">
+            <label>用户名</label>
+            <input type="text" class="form-input" id="username" placeholder="请输入用户名" required />
+          </div>
+          <div class="form-group">
+            <label>密码</label>
+            <input type="password" class="form-input" id="password" placeholder="请输入密码" required />
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">登录</button>
+        </form>
+        <p class="auth-link">还没有账号？<a href="register.html">立即注册</a></p>
+        <p class="auth-link"><a href="index.html">← 返回首页</a></p>
+      </div>
+    </div>
+  </div>
+  <script src="js/api.js"></script>
+  <script src="js/utils.js"></script>
+  <script>
+    document.getElementById('login-form').onsubmit = async function(e) {
+      e.preventDefault();
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      if (!username || !password) {
+        Utils.toast('请填写用户名和密码', 'error');
+        return;
+      }
+      try {
+        const res = await AuthAPI.login({ username, password });
+        localStorage.setItem('token', res.data.token);
+        // Fetch profile
+        const profile = await UserAPI.getProfile();
+        localStorage.setItem('user', JSON.stringify(profile.data));
+        Utils.toast('登录成功！', 'success');
+        setTimeout(() => { window.location.href = '/index.html'; }, 600);
+      } catch {}
+    };
+  </script>
+</body>
+</html>

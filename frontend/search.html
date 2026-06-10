@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>搜索 - 社交运营系统</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <div class="navbar" id="navbar"></div>
+  <div class="container">
+    <h2 style="margin-bottom:20px;" id="search-title">搜索结果</h2>
+    <div class="news-grid" id="post-list"></div>
+    <div id="pagination"></div>
+  </div>
+  <script src="js/api.js"></script>
+  <script src="js/utils.js"></script>
+  <script>
+    const keyword = new URLSearchParams(window.location.search).get('keyword') || '';
+    let page = 1, total = 0, posts = [];
+
+    document.addEventListener('DOMContentLoaded', () => {
+      Utils.renderNavbar('navbar');
+      document.getElementById('search-title').textContent = `搜索"${keyword}"的结果`;
+      if (keyword) loadPosts();
+    });
+
+    async function loadPosts() {
+      try {
+        const res = await PostAPI.search(keyword, page, 10);
+        posts = res.data.records;
+        total = res.data.total;
+        renderPosts();
+        Utils.renderPagination('pagination', page, Math.ceil(total / 10), (p) => {
+          page = p;
+          loadPosts();
+        });
+      } catch {}
+    }
+
+    function renderPosts() {
+      const el = document.getElementById('post-list');
+      if (posts.length === 0) {
+        el.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div><p>未找到相关帖子</p></div>';
+        return;
+      }
+      el.innerHTML = posts.map(p => `
+        <div class="card">
+          <div class="card-header">
+            <img src="${Utils.avatarUrl(p.avatarUrl)}" class="card-avatar"
+                 onerror="this.style.display='none';this.nextElementSibling.style.display='flex';" />
+            <div class="card-avatar-placeholder" style="display:${p.avatarUrl ? 'none' : 'flex'}">
+              ${(p.nickname || p.username || '?')[0]}
+            </div>
+            <div class="card-meta">
+              <span class="author">${p.nickname || p.username}</span>
+              <span> · ${Utils.timeAgo(p.createTime)}</span>
+              ${p.categoryName ? `<span> · <span class="card-category">${p.categoryName}</span></span>` : ''}
+            </div>
+          </div>
+          <div class="card-title"><a href="post-detail.html?id=${p.id}">${p.title}</a></div>
+          <p class="card-excerpt">${Utils.excerpt(p.content)}</p>
+          ${Utils.firstImage(p.imageUrls) ? `<img src="${Utils.firstImage(p.imageUrls)}" class="card-image" />` : ''}
+          <a href="post-detail.html?id=${p.id}" class="btn btn-sm btn-outline">查看详情</a>
+        </div>
+      `).join('');
+    }
+  </script>
+</body>
+</html>

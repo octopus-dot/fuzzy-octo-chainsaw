@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mysql -u root -p\"2292267306Zy!\" --default-character-set=utf8mb4 news_db -e \"SHOW TABLES; SELECT name FROM category;\")",
+      "Bash(mvn spring-boot:run -q)",
+      "Bash(curl -s http://localhost:8080/api/categories)",
+      "Bash(taskkill //F //IM java.exe)",
+      "Bash(mvn clean *)",
+      "Bash(mvn dependency:copy -Dartifact=org.mindrot:jbcrypt:0.4 -DoutputDirectory=./target/deps -q)",
+      "Bash(java -cp \"./target/deps/jbcrypt-0.4.jar\" -e 'import org.mindrot.jbcrypt.BCrypt; System.out.println\\(BCrypt.hashpw\\(\"admin123\", BCrypt.gensalt\\(\\)\\)\\);')",
+      "Bash(mvn exec:java -Dexec.mainClass=\"org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder\" -Dexec.classpathScope=test -q)",
+      "Bash(mysql -u root -p2292267306Zy! --default-character-set=utf8mb4 news_db -e ' *)",
+      "Bash(curl -s -X POST http://localhost:8080/api/login -H \"Content-Type: application/json\" -d '{\"username\":\"admin\",\"password\":\"123456\"}')",
+      "Bash(curl -s -X POST http://localhost:8080/api/login -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"123456\"}')",
+      "Bash(curl -s http://localhost:8080/api/friends -H \"Authorization: Bearer $\\(curl -s -X POST http://localhost:8080/api/login -H 'Content-Type: application/json' -d '{\"username\":\"admin\",\"password\":\"123456\"}')",
+      "Bash(curl -s http://localhost:8080/api/profile/1)",
+      "Bash(curl -s -o /dev/null -w \"user-profile: %{http_code}\" \"http://localhost:8080/user-profile.html?id=1\")",
+      "Bash(curl -s -o /dev/null -w \"post-detail: %{http_code}\" http://localhost:8080/post-detail.html)",
+      "Bash(curl -s -o /dev/null -w \"admin: %{http_code}\" http://localhost:8080/admin.html)",
+      "Bash(curl -s -X POST \"http://localhost:8080/api/login\" -H \"Content-Type: application/json\" -d '{\"username\":\"admin\",\"password\":\"123456\"}')",
+      "Bash(mysql -u root -p\"2292267306Zy!\" --default-character-set=utf8mb4 -e \"SELECT 1\")",
+      "Bash(curl -s -o /dev/null -w \"首页: %{http_code}\" http://localhost:8080/)",
+      "Bash(mysql -u root -p\"2292267306Zy!\" --default-character-set=utf8mb4 -e \"DROP DATABASE IF EXISTS news_db; CREATE DATABASE news_db DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;\")",
+      "Bash(mysql -u root -p\"2292267306Zy!\" --default-character-set=utf8mb4 news_db)",
+      "Bash(mysql -u root -p\"2292267306Zy!\" --default-character-set=utf8mb4 news_db -e \"SELECT COUNT\\(*\\) AS users FROM user; SELECT COUNT\\(*\\) AS posts FROM post; SELECT status, is_recommended, COUNT\\(*\\) FROM post GROUP BY status, is_recommended;\")",
+      "Bash(mysql -u root -p\"2292267306Zy!\" --default-character-set=utf8mb4 news_db -e \"SELECT COUNT\\(*\\) tables FROM information_schema.tables WHERE table_schema='news_db'; SELECT COUNT\\(*\\) users FROM user; SELECT COUNT\\(*\\) posts FROM post WHERE is_recommended=1;\")",
+      "Bash(curl -s \"http://localhost:8080/api/recommended?page=1&size=3\")",
+      "Bash(curl -s -X POST http://localhost:8080/api/login -H \"Content-Type: application/json\" -d '{\"username\":\"User1\",\"password\":\"123456\"}')",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/)",
+      "Bash(curl -s \"http://localhost:8080/api/recommended?page=1&size=2\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" \"http://localhost:8080/category.html?id=1\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/post-detail.html)",
+      "Bash(curl -s \"http://localhost:8080/api/recommended?page=1&size=1\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/profile.html)",
+      "Bash(git init *)",
+      "Bash(git add *)"
+    ]
+  }
+}
